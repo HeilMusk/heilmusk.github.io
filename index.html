@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Arm Points at Cursor</title>
+  <style>
+    html, body { height: 100%; margin: 0; background:#111; overflow:hidden; }
+
+    #stage{
+      position:fixed;
+      inset:0;
+      cursor:crosshair;
+      user-select:none;
+	background-image: url("background.png");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+    }
+
+    #char{
+      position:absolute;
+      left:50%;
+      top:50%;
+      transform: translate(-50%, -50%);
+      width:0; height:0; /* set in JS */
+    }
+
+    #body, #arm{
+      position:absolute;
+      left:0; top:0;
+      pointer-events:none;
+    }
+
+    #arm{
+      will-change: transform;
+      /* We will enable transition only when resetting */
+      transition: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="stage">
+    <div id="char">
+      <img id="body" src="elon-body.png" alt="body">
+      <img id="arm"  src="elon-arm.png"  alt="arm">
+    </div>
+  </div>
+
+  <script>
+    const stage = document.getElementById('stage');
+    const char  = document.getElementById('char');
+    const body  = document.getElementById('body');
+    const arm   = document.getElementById('arm');
+
+    // ===== YOUR CALIBRATED VALUES =====
+    const ARM_SHOULDER_PIVOT  = { x: 283, y: 230 };
+    const ARM_HAND_TIP        = { x: 25,  y: 70  };
+    const BODY_SHOULDER_POINT = { x: 243, y: 264 };
+    const ARM_OFFSET          = { x: 42,  y: -35 };
+    // =================================
+
+    const BODY_OFFSET = { x: 0, y: 0 };
+
+    // Rest position (original)
+    const REST_ROTATION_DEG = 0;
+
+    // Track a continuous rotation angle to prevent 360° flips
+    let currentDeg = REST_ROTATION_DEG;
+
+    function centerChar(){
+      char.style.width  = (body.naturalWidth  || body.width) + "px";
+      char.style.height = (body.naturalHeight || body.height) + "px";
+    }
+
+    function alignArm(){
+      centerChar();
+
+      body.style.left = BODY_OFFSET.x + "px";
+      body.style.top  = BODY_OFFSET.y + "px";
+
+      // Place arm so pivot is attached to the body shoulder point
+      const armLeft =
+        BODY_OFFSET.x +
+        (BODY_SHOULDER_POINT.x - ARM_SHOULDER_PIVOT.x) +
+        ARM_OFFSET.x;
+
+      const armTop =
+        BODY_OFFSET.y +
+        (BODY_SHOULDER_POINT.y - ARM_SHOULDER_PIVOT.y) +
+        ARM_OFFSET.y;
+
+      arm.style.left = armLeft + "px";
+      arm.style.top  = armTop  + "px";
+
+      arm.style.transformOrigin = `${ARM_SHOULDER_PIVOT.x}px ${ARM_SHOULDER_PIVOT.y}px`;
+
+      // Keep whatever current angle is (don’t reset on resize)
+      arm.style.transform = `rotate(${currentDeg}deg)`;
+    }
+
+    // Normalize delta to [-180, +180] so we always rotate the shortest way
+    function shortestDelta(fromDeg, toDeg){
+      return ((toDeg - fromDeg + 540) % 360) - 180;
+    }
+
+    function rotateToCursor(e){
+      // Disable transition while actively tracking (prevents weird interpolation)
+      arm.style.transition = "none";
+
+      const rect = char.getBoundingClientRect();
+
+      const shoulderX = rect.left + arm.offsetLeft + ARM_SHOULDER_PIVOT.x;
+      const shoulderY = rect.top  + arm.offsetTop  + ARM_SHOULDER_PIVOT.y;
+
+      // Angle shoulder -> cursor
+      const targetAngle = Math.atan2(e.clientY - shoulderY, e.clientX - shoulderX);
+
+      // Angle shoulder -> hand tip (arm image's built-in direction)
+      const baseAngle = Math.atan2(
+        ARM_HAND_TIP.y - ARM_SHOULDER_PIVOT.y,
+        ARM_HAND_TIP.x - ARM_SHOULDER_PIVOT.x
+      );
+
+      // Desired rotation (wrapped to [-180..180] by nature of atan2)
+      const desiredDeg = (targetAngle - baseAngle) * 180 / Math.PI;
+
+      // Unwrap so it stays continuous and never “spins around”
+      currentDeg += shortestDelta(currentDeg, desiredDeg);
+
+      arm.style.transform = `rotate(${currentDeg}deg)`;
+    }
+
+    function resetArm(){
+      // Smoothly go back to rest
+      arm.style.transition = "transform 0.25s ease-out";
+
+      // Move currentDeg to the nearest equivalent of REST_ROTATION_DEG
+      currentDeg += shortestDelta(currentDeg, REST_ROTATION_DEG);
+
+      arm.style.transform = `rotate(${currentDeg}deg)`;
+    }
+
+    // Init after images load
+    let loaded = 0;
+    function onLoaded(){ if (++loaded === 2) init(); }
+    body.addEventListener('load', onLoaded);
+    arm.addEventListener('load', onLoaded);
+    if (body.complete) onLoaded();
+    if (arm.complete) onLoaded();
+
+    function init(){
+      alignArm();
+
+      stage.addEventListener('pointermove', rotateToCursor);
+      stage.addEventListener('pointerleave', resetArm);
+      window.addEventListener('resize', alignArm);
+    }
+  </script>
+</body>
+</html>

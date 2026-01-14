@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Arm Points at Cursor (Calibrate)</title>
+  <style>
+    html, body { height: 100%; margin: 0; background:#111; overflow:hidden; }
+    #stage{ position:fixed; inset:0; cursor: crosshair; user-select:none; }
+
+    #char{
+      position:absolute;
+      left:50%;
+      top:50%;
+      transform: translate(-50%, -50%) scale(var(--scale, 1));
+      transform-origin: center;
+      width: 0px; height: 0px; /* set in JS */
+    }
+
+    #body, #arm{
+      position:absolute;
+      left:0; top:0;
+      pointer-events:none;
+    }
+
+    #arm{
+      will-change: transform;
+      transform-origin: 0px 0px; /* set in JS */
+      transform: rotate(0deg);
+    }
+
+    /* Debug dots */
+    .dot{
+      position:absolute;
+      width:10px; height:10px;
+      border-radius:999px;
+      transform: translate(-50%, -50%);
+      pointer-events:none;
+      display:none;
+      box-shadow: 0 0 12px rgba(255,255,255,0.25);
+    }
+    #shoulderDot{ background: rgba(0,255,255,0.9); }
+    #handDot{ background: rgba(255,200,0,0.9); }
+
+    /* HUD */
+    #hud{
+      position:fixed;
+      left:12px; top:12px;
+      background: rgba(0,0,0,0.65);
+      color:#eee;
+      font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      padding:10px 12px;
+      border:1px solid rgba(255,255,255,0.15);
+      border-radius:10px;
+      max-width: 360px;
+      user-select:text;
+    }
+    #hud b{ color:#bff; }
+    #hud .hint{ color:#bbb; margin-top:6px; }
+    #hud .row{ margin:4px 0; }
+    #hud .pill{
+      display:inline-block;
+      padding:2px 6px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,0.15);
+      margin-left:6px;
+      color:#ddd;
+    }
+  </style>
+</head>
+<body>
+  <div id="stage">
+    <div id="char">
+      <img id="body" src="elon-body.png" alt="body">
+      <img id="arm"  src="elon-arm.png"  alt="arm">
+      <div id="shoulderDot" class="dot"></div>
+      <div id="handDot" class="dot"></div>
+    </div>
+  </div>
+
+  <div id="hud">
+    <div class="row"><b>Calibration</b>: <span id="calState" class="pill">OFF</span> (press <b>C</b>)</div>
+    <div class="row">Drag = ARM_OFFSET</div>
+    <div class="row"><b>Shift</b>+Drag = BODY_SHOULDER_POINT</div>
+    <div class="row"><b>Alt</b>+Drag = ARM_SHOULDER_PIVOT</div>
+    <div class="row"><b>Ctrl</b>+Drag = ARM_HAND_TIP</div>
+    <div class="hint">Line up cyan dot (shoulder) with the body’s shoulder seam. Then ensure yellow dot is on fingertip.</div>
+    <hr style="border:none;border-top:1px solid rgba(255,255,255,0.12);margin:10px 0;">
+    <div id="vals"></div>
+  </div>
+
+  <script>
+    const char = document.getElementById('char');
+    const body = document.getElementById('body');
+    const arm  = document.getElementById('arm');
+
+    const shoulderDot = document.getElementById('shoulderDot');
+    const handDot     = document.getElementById('handDot');
+
+    const calStateEl = document.getElementById('calState');
+    const valsEl = document.getElementById('vals');
+
+    // ====== STARTING VALUES (we'll calibrate these) ======
+    let ARM_SHOULDER_PIVOT = { x: 210, y: 210 };  // in arm image pixels
+    let ARM_HAND_TIP       = { x: 25,  y: 70  };  // in arm image pixels
+    let BODY_SHOULDER_POINT= { x: 235, y: 270 };  // in body image pixels
+
+    let BODY_OFFSET = { x: 0, y: 0 };             // usually 0,0
+    let ARM_OFFSET  = { x: 0, y: 0 };             // nudge arm layer
+    // =====================================================
+
+    let lastRotateDeg = 0;
+    let calibrating = false;
+
+    function getScale(){
+      const v = getComputedStyle(char).getPropertyValue('--scale').trim();
+      const s = parseFloat(v || "1");
+      return Number.isFinite(s) ? s : 1;
+    }
+
+    function centerToBodyBounds(){
+      const w = body.naturalWidth  || body.width;
+      const h = body.naturalHeight || body.height;
+      char.style.width  = w + "px";
+      char.style.height = h + "px";
+    }
+
+    function alignArmToBody(){
+      centerToBodyBounds();
+
+      body.style.left = BODY_OFFSET.x + "px";
+      body.style.top  = BODY_OFFSET.y + "px";
+
+      const armLeft = BODY_OFFSET.x + (BODY_SHOULDER_POINT.x - ARM_SHOULDER_PIVOT.x) + ARM_OFFSET.x;
+      const armTop  = BODY_OFFSET.y + (BODY_SHOULDER_POINT.y - ARM_SHOULDER_PIVOT.y) + ARM_OFFSET.y;
+
+      arm.style.left = armLeft + "px";
+      arm.style.top  = armTop  + "px";
+
+      arm.style.transformOrigin = `${ARM_SHOULDER_PIVOT.x}px ${ARM_SHOULDER_PIVOT.y}px`;
+      arm.style.transform = `rotate(${lastRotateDeg}deg)`;
+
+      // Debug dots in char coords (unscaled)
+      shoulderDot.style.left = (armLeft + ARM_SHOULDER_PIVOT.x) + "px";
+      shoulderDot.style.top  = (armTop  + ARM_SHOULDER_PIVOT.y) + "px";
+      handDot.style.left = (armLeft + ARM_HAND_TIP.x) + "px";
+      handDot.style.top  = (armTop  + ARM_HAND_TIP.y) + "px";
+
+      valsEl.innerHTML = `
+        <div class="row">ARM_SHOULDER_PIVOT: { x: ${Math.round(ARM_SHOULDER_PIVOT.x)}, y: ${Math.round(ARM_SHOULDER_PIVOT.y)} }</div>
+        <div class="row">ARM_HAND_TIP: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{ x: ${Math.round(ARM_HAND_TIP.x)}, y: ${Math.round(ARM_HAND_TIP.y)} }</div>
+        <div class="row">BODY_SHOULDER_POINT: { x: ${Math.round(BODY_SHOULDER_POINT.x)}, y: ${Math.round(BODY_SHOULDER_POINT.y)} }</div>
+        <div class="row">ARM_OFFSET: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{ x: ${Math.round(ARM_OFFSET.x)}, y: ${Math.round(ARM_OFFSET.y)} }</div>
+      `;
+    }
+
+    function rotateArmToPoint(clientX, clientY){
+      const rect = char.getBoundingClientRect();
+      const s = getScale();
+
+      const armLeft = parseFloat(arm.style.left || 0);
+      const armTop  = parseFloat(arm.style.top  || 0);
+
+      const shoulderX = rect.left + (armLeft + ARM_SHOULDER_PIVOT.x) * s;
+      const shoulderY = rect.top  + (armTop  + ARM_SHOULDER_PIVOT.y) * s;
+
+      const targetAngle = Math.atan2(clientY - shoulderY, clientX - shoulderX);
+      const baseAngle = Math.atan2(
+        (ARM_HAND_TIP.y - ARM_SHOULDER_PIVOT.y),
+        (ARM_HAND_TIP.x - ARM_SHOULDER_PIVOT.x)
+      );
+
+      lastRotateDeg = (targetAngle - baseAngle) * 180 / Math.PI;
+      arm.style.transform = `rotate(${lastRotateDeg}deg)`;
+    }
+
+    // ====== Calibration dragging ======
+    let dragging = false;
+    let dragStart = { x:0, y:0 };
+    let snapshot = null;
+
+    function setCal(on){
+      calibrating = on;
+      calStateEl.textContent = on ? "ON" : "OFF";
+      shoulderDot.style.display = on ? "block" : "none";
+      handDot.style.display     = on ? "block" : "none";
+    }
+
+    window.addEventListener('keydown', (e)=>{
+      if (e.key.toLowerCase() === 'c'){
+        setCal(!calibrating);
+        alignArmToBody();
+      }
+    });
+
+    window.addEventListener('pointerdown', (e)=>{
+      if (!calibrating) return;
+      dragging = true;
+      dragStart = { x: e.clientX, y: e.clientY };
+      snapshot = {
+        ARM_OFFSET: { ...ARM_OFFSET },
+        BODY_SHOULDER_POINT: { ...BODY_SHOULDER_POINT },
+        ARM_SHOULDER_PIVOT: { ...ARM_SHOULDER_PIVOT },
+        ARM_HAND_TIP: { ...ARM_HAND_TIP }
+      };
+      window.addEventListener('pointermove', onDrag, { passive:false });
+      window.addEventListener('pointerup', endDrag, { once:true });
+    });
+
+    function onDrag(e){
+      if (!dragging) return;
+      e.preventDefault();
+
+      // Movement in *unscaled image pixels* (so calibration matches constants)
+      const s = getScale();
+      const dx = (e.clientX - dragStart.x) / s;
+      const dy = (e.clientY - dragStart.y) / s;
+
+      if (e.shiftKey){
+        BODY_SHOULDER_POINT.x = snapshot.BODY_SHOULDER_POINT.x + dx;
+        BODY_SHOULDER_POINT.y = snapshot.BODY_SHOULDER_POINT.y + dy;
+      } else if (e.altKey){
+        ARM_SHOULDER_PIVOT.x = snapshot.ARM_SHOULDER_PIVOT.x + dx;
+        ARM_SHOULDER_PIVOT.y = snapshot.ARM_SHOULDER_PIVOT.y + dy;
+      } else if (e.ctrlKey){
+        ARM_HAND_TIP.x = snapshot.ARM_HAND_TIP.x + dx;
+        ARM_HAND_TIP.y = snapshot.ARM_HAND_TIP.y + dy;
+      } else {
+        ARM_OFFSET.x = snapshot.ARM_OFFSET.x + dx;
+        ARM_OFFSET.y = snapshot.ARM_OFFSET.y + dy;
+      }
+
+      alignArmToBody();
+    }
+
+    function endDrag(){
+      dragging = false;
+      window.removeEventListener('pointermove', onDrag);
+    }
+
+    // ====== Startup ======
+    let loaded = 0;
+    function onLoaded(){ if (++loaded >= 2) init(); }
+    body.addEventListener('load', onLoaded);
+    arm.addEventListener('load', onLoaded);
+    if (body.complete) onLoaded();
+    if (arm.complete) onLoaded();
+
+    function init(){
+      setCal(false);
+      alignArmToBody();
+
+      window.addEventListener('pointermove', (e)=>{
+        rotateArmToPoint(e.clientX, e.clientY);
+      }, { passive:true });
+
+      window.addEventListener('resize', alignArmToBody);
+    }
+  </script>
+</body>
+</html>
