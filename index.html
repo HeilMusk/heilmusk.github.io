@@ -293,7 +293,7 @@ function resetArm() {
   song.currentTime = 0;
 
   currentDeg += shortestDelta(currentDeg, REST_ROTATION_DEG);
-  arm.style.transition = "transform 0.25s ease-out";
+  arm.style.transition = "transform 0.05s ease-out";
   arm.style.transform = `rotate(${currentDeg}deg)`;
 }
 
@@ -328,5 +328,6 @@ let loaded = 0;
 
 </body>
 </html>
+
 
 
