@@ -1,161 +1,328 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Arm Points at Cursor</title>
-  <style>
-    html, body { height: 100%; margin: 0; background:#111; overflow:hidden; }
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arm Interaction Demo</title>
 
-    #stage{
-      position:fixed;
-      inset:0;
-      cursor:crosshair;
-      user-select:none;
-	background-image: url("background.png");
-  background-size: cover;
+<style>
+html, body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+/* ================= BACKGROUNDS (ADDED) ================= */
+#bgBase, #bgAlt{
+  position: fixed;
+  inset: 0;
+  z-index: -10;
+  pointer-events: none;
   background-position: center;
+  background-size: cover;
   background-repeat: no-repeat;
-    }
+}
 
-    #char{
-      position:absolute;
-      left:50%;
-      top:50%;
-      transform: translate(-50%, -50%);
-      width:0; height:0; /* set in JS */
-    }
+#bgBase{
+  background: url("background.png") center/cover no-repeat;
+}
 
-    #body, #arm{
-      position:absolute;
-      left:0; top:0;
-      pointer-events:none;
-    }
+#bgAlt{
+  background: url("background2.png") center/cover no-repeat;
+  opacity: 0;
+  transition: opacity 700ms ease;
+}
 
-    #arm{
-      will-change: transform;
-      /* We will enable transition only when resetting */
-      transition: none;
-    }
-  </style>
+#bgAlt.on{
+  opacity: 1;
+}
+/* ======================================================= */
+
+#stage {
+  position: fixed;
+  inset: 0;
+  cursor: crosshair;
+  user-select: none;
+}
+
+#char {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 0;
+  height: 0;
+  filter: drop-shadow(0 60px 60px rgba(0,0,0,1));
+}
+
+
+
+#body, #arm {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+drop-shadow: 1px 1px 1px rgba(3, 7, 18, 0.02),
+  5px 5px 4px rgba(3, 7, 18, 0.03),
+  12px 12px 10px rgba(3, 7, 18, 0.05),
+  20px 20px 17px rgba(3, 7, 18, 0.06),
+  32px 32px 27px rgba(3, 7, 18, 0.08);
+
+}
+
+#arm {
+  will-change: transform;
+  transition: none;
+ drop-shadow: 1px 1px 1px rgba(3, 7, 18, 0.02),
+  5px 5px 4px rgba(3, 7, 18, 0.03),
+  12px 12px 10px rgba(3, 7, 18, 0.05),
+  20px 20px 17px rgba(3, 7, 18, 0.06),
+  32px 32px 27px rgba(3, 7, 18, 0.08);
+}
+
+/* ================= POPUPS ================= */
+#popups {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.popup {
+  position: absolute;
+  width: 160px;
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.85);
+  transition: opacity 180ms ease, transform 180ms ease;
+  filter: drop-shadow(0 18px 30px rgba(0,0,0,0.5));
+}
+
+.popup.show {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+  animation: floaty 1.6s ease-in-out infinite;
+}
+
+@keyframes floaty {
+  0% { transform: translate(-50%, -52%) scale(1); }
+  50% { transform: translate(-50%, -48%) scale(1); }
+  100% { transform: translate(-50%, -52%) scale(1); }
+}
+
+/* ================= AUDIO GATE ================= */
+#audioGate {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(0,0,0,0.6);
+  z-index: 9999;
+}
+
+#audioGate.hidden { display: none; }
+
+#audioGate .box {
+  background: rgba(0,0,0,0.8);
+  border: 1px solid rgba(255,255,255,0.18);
+  color: #eee;
+  padding: 16px 18px;
+  border-radius: 14px;
+  font: 14px system-ui, sans-serif;
+  text-align: center;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.45);
+}
+</style>
 </head>
+
 <body>
-  <div id="stage">
-    <div id="char">
-      <img id="body" src="elon-body.png" alt="body">
-      <img id="arm"  src="elon-arm.png"  alt="arm">
-    </div>
+
+<!-- ================= BACKGROUND LAYERS (ADDED) ================= -->
+<div id="bgBase"></div>
+<div id="bgAlt"></div>
+
+<!-- AUDIO -->
+<audio id="song" src="song.mp3" preload="auto"></audio>
+
+<!-- AUDIO UNLOCK -->
+<div id="audioGate">
+  <div class="box">
+    <strong>Click to enable audio</strong><br>
+    Browsers require one interaction
   </div>
+</div>
 
-  <script>
-    const stage = document.getElementById('stage');
-    const char  = document.getElementById('char');
-    const body  = document.getElementById('body');
-    const arm   = document.getElementById('arm');
+<!-- POPUPS -->
+<div id="popups">
+  
+</div>
 
-    // ===== YOUR CALIBRATED VALUES =====
-    const ARM_SHOULDER_PIVOT  = { x: 283, y: 230 };
-    const ARM_HAND_TIP        = { x: 25,  y: 70  };
-    const BODY_SHOULDER_POINT = { x: 243, y: 264 };
-    const ARM_OFFSET          = { x: 42,  y: -35 };
-    // =================================
+<!-- STAGE -->
+<div id="stage">
+  <div id="char">
+  <img id="body" src="elon-body.png">
+  <img id="arm" src="elon-arm.png">
+    
+    
+  </div>
+</div>
 
-    const BODY_OFFSET = { x: 0, y: 0 };
+<script>
+/* ================= EXISTING LOGIC (UNCHANGED) ================= */
+const stage = document.getElementById("stage");
+const char  = document.getElementById("char");
+const body  = document.getElementById("body");
+const arm   = document.getElementById("arm");
 
-    // Rest position (original)
-    const REST_ROTATION_DEG = 0;
+const ARM_SHOULDER_PIVOT  = { x: 283, y: 230 };
+const ARM_HAND_TIP        = { x: 25,  y: 70 };
+const BODY_SHOULDER_POINT = { x: 243, y: 264 };
+const ARM_OFFSET          = { x: 42,  y: -35 };
 
-    // Track a continuous rotation angle to prevent 360° flips
-    let currentDeg = REST_ROTATION_DEG;
+const REST_ROTATION_DEG = 0;
+const REST_EPSILON_DEG  = 6;
 
-    function centerChar(){
-      char.style.width  = (body.naturalWidth  || body.width) + "px";
-      char.style.height = (body.naturalHeight || body.height) + "px";
+let currentDeg = REST_ROTATION_DEG;
+let restModeActive = false;
+let suppressUntil = 0;
+
+const song = document.getElementById("song");
+const audioGate = document.getElementById("audioGate");
+let audioUnlocked = false;
+
+audioGate.addEventListener("pointerdown", async () => {
+  try {
+    await song.play();
+    song.pause();
+    song.currentTime = 0;
+    audioUnlocked = true;
+    audioGate.classList.add("hidden");
+  } catch {}
+});
+
+const popups = [...document.querySelectorAll(".popup")];
+
+function placePopups() {
+  const r = char.getBoundingClientRect();
+  const cx = r.left + r.width / 2;
+  const cy = r.top + r.height / 2;
+
+  const spots = [
+    { x: cx - r.width * 0.6, y: cy - r.height * 0.3 },
+    { x: cx + r.width * 0.6, y: cy - r.height * 0.1 },
+    { x: cx,                y: cy + r.height * 0.6 }
+  ];
+
+  popups.forEach((p, i) => {
+    const s = spots[i % spots.length];
+    p.style.left = s.x + (Math.random()*40-20) + "px";
+    p.style.top  = s.y + (Math.random()*40-20) + "px";
+  });
+}
+
+function centerChar() {
+  char.style.width  = body.naturalWidth + "px";
+  char.style.height = body.naturalHeight + "px";
+}
+
+function alignArm() {
+  centerChar();
+
+  const armLeft =
+    BODY_SHOULDER_POINT.x - ARM_SHOULDER_PIVOT.x + ARM_OFFSET.x;
+  const armTop =
+    BODY_SHOULDER_POINT.y - ARM_SHOULDER_PIVOT.y + ARM_OFFSET.y;
+
+  arm.style.left = armLeft + "px";
+  arm.style.top  = armTop  + "px";
+  arm.style.transformOrigin =
+    `${ARM_SHOULDER_PIVOT.x}px ${ARM_SHOULDER_PIVOT.y}px`;
+  arm.style.transform = `rotate(${currentDeg}deg)`;
+}
+
+function shortestDelta(a, b) {
+  return ((b - a + 540) % 360) - 180;
+}
+
+function angleDist(a, b) {
+  return Math.abs(shortestDelta(a, b));
+}
+
+function rotateToCursor(e) {
+  const rect = char.getBoundingClientRect();
+  const sx = rect.left + arm.offsetLeft + ARM_SHOULDER_PIVOT.x;
+  const sy = rect.top  + arm.offsetTop  + ARM_SHOULDER_PIVOT.y;
+
+  const target = Math.atan2(e.clientY - sy, e.clientX - sx);
+  const base   = Math.atan2(
+    ARM_HAND_TIP.y - ARM_SHOULDER_PIVOT.y,
+    ARM_HAND_TIP.x - ARM_SHOULDER_PIVOT.x
+  );
+
+  const desired = (target - base) * 180 / Math.PI;
+  currentDeg += shortestDelta(currentDeg, desired);
+  arm.style.transform = `rotate(${currentDeg}deg)`;
+
+  const now = performance.now();
+  const nearRest = angleDist(currentDeg, REST_ROTATION_DEG) <= REST_EPSILON_DEG;
+
+  if (now > suppressUntil && nearRest && !restModeActive) {
+    restModeActive = true;
+    placePopups();
+    popups.forEach(p => p.classList.add("show"));
+    if (audioUnlocked) {
+      song.currentTime = 0;
+      song.play().catch(()=>{});
     }
+  }
 
-    function alignArm(){
-      centerChar();
+  if (!nearRest && restModeActive) {
+    restModeActive = false;
+    popups.forEach(p => p.classList.remove("show"));
+    song.pause();
+    song.currentTime = 0;
+  }
+}
 
-      body.style.left = BODY_OFFSET.x + "px";
-      body.style.top  = BODY_OFFSET.y + "px";
+function resetArm() {
+  suppressUntil = performance.now() + 300;
+  restModeActive = false;
+  popups.forEach(p => p.classList.remove("show"));
+  song.pause();
+  song.currentTime = 0;
 
-      // Place arm so pivot is attached to the body shoulder point
-      const armLeft =
-        BODY_OFFSET.x +
-        (BODY_SHOULDER_POINT.x - ARM_SHOULDER_PIVOT.x) +
-        ARM_OFFSET.x;
+  currentDeg += shortestDelta(currentDeg, REST_ROTATION_DEG);
+  arm.style.transition = "transform 0.25s ease-out";
+  arm.style.transform = `rotate(${currentDeg}deg)`;
+}
 
-      const armTop =
-        BODY_OFFSET.y +
-        (BODY_SHOULDER_POINT.y - ARM_SHOULDER_PIVOT.y) +
-        ARM_OFFSET.y;
+let loaded = 0;
+[body, arm].forEach(img => img.onload = () => {
+  if (++loaded === 2) {
+    alignArm();
+    stage.addEventListener("pointermove", rotateToCursor);
+    stage.addEventListener("pointerleave", resetArm);
+    window.addEventListener("resize", alignArm);
+  }
+});
+</script>
 
-      arm.style.left = armLeft + "px";
-      arm.style.top  = armTop  + "px";
+<!-- ================= BACKGROUND WATCHER (ADDED) ================= -->
+<script>
+(() => {
+  const bgAlt = document.getElementById("bgAlt");
+  let last = null;
 
-      arm.style.transformOrigin = `${ARM_SHOULDER_PIVOT.x}px ${ARM_SHOULDER_PIVOT.y}px`;
-
-      // Keep whatever current angle is (don’t reset on resize)
-      arm.style.transform = `rotate(${currentDeg}deg)`;
+  function tick(){
+    const now = typeof restModeActive !== "undefined" && restModeActive;
+    if (now !== last){
+      bgAlt.classList.toggle("on", now);
+      last = now;
     }
+    requestAnimationFrame(tick);
+  }
+  tick();
+})();
+</script>
 
-    // Normalize delta to [-180, +180] so we always rotate the shortest way
-    function shortestDelta(fromDeg, toDeg){
-      return ((toDeg - fromDeg + 540) % 360) - 180;
-    }
-
-    function rotateToCursor(e){
-      // Disable transition while actively tracking (prevents weird interpolation)
-      arm.style.transition = "none";
-
-      const rect = char.getBoundingClientRect();
-
-      const shoulderX = rect.left + arm.offsetLeft + ARM_SHOULDER_PIVOT.x;
-      const shoulderY = rect.top  + arm.offsetTop  + ARM_SHOULDER_PIVOT.y;
-
-      // Angle shoulder -> cursor
-      const targetAngle = Math.atan2(e.clientY - shoulderY, e.clientX - shoulderX);
-
-      // Angle shoulder -> hand tip (arm image's built-in direction)
-      const baseAngle = Math.atan2(
-        ARM_HAND_TIP.y - ARM_SHOULDER_PIVOT.y,
-        ARM_HAND_TIP.x - ARM_SHOULDER_PIVOT.x
-      );
-
-      // Desired rotation (wrapped to [-180..180] by nature of atan2)
-      const desiredDeg = (targetAngle - baseAngle) * 180 / Math.PI;
-
-      // Unwrap so it stays continuous and never “spins around”
-      currentDeg += shortestDelta(currentDeg, desiredDeg);
-
-      arm.style.transform = `rotate(${currentDeg}deg)`;
-    }
-
-    function resetArm(){
-      // Smoothly go back to rest
-      arm.style.transition = "transform 0.25s ease-out";
-
-      // Move currentDeg to the nearest equivalent of REST_ROTATION_DEG
-      currentDeg += shortestDelta(currentDeg, REST_ROTATION_DEG);
-
-      arm.style.transform = `rotate(${currentDeg}deg)`;
-    }
-
-    // Init after images load
-    let loaded = 0;
-    function onLoaded(){ if (++loaded === 2) init(); }
-    body.addEventListener('load', onLoaded);
-    arm.addEventListener('load', onLoaded);
-    if (body.complete) onLoaded();
-    if (arm.complete) onLoaded();
-
-    function init(){
-      alignArm();
-
-      stage.addEventListener('pointermove', rotateToCursor);
-      stage.addEventListener('pointerleave', resetArm);
-      window.addEventListener('resize', alignArm);
-    }
-  </script>
 </body>
 </html>
