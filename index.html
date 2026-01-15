@@ -14,6 +14,18 @@ html, body {
   overflow: hidden;
 }
 
+/* ================= MOBILE / TOUCH HELPERS (ADDED) ================= */
+html, body, #stage{
+  touch-action: none;              /* stop scroll/zoom gestures from stealing touches */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+/* Optional: reduce accidental zoom on some browsers */
+#stage { overscroll-behavior: none; }
+/* ================================================================ */
+
 /* ================= BACKGROUNDS (ADDED) ================= */
 #bgBase, #bgAlt{
   position: fixed;
@@ -56,8 +68,6 @@ html, body {
   height: 0;
   filter: drop-shadow(0 60px 60px rgba(0,0,0,1));
 }
-
-
 
 #body, #arm {
   position: absolute;
@@ -143,19 +153,22 @@ drop-shadow: 1px 1px 1px rgba(3, 7, 18, 0.02),
 <div id="bgAlt"></div>
 
 <!-- AUDIO -->
-<audio id="song" src="song.mp3" preload="auto"></audio>
+<audio id="song" src="song.mp3" preload="auto" playsinline></audio>
 
 <!-- AUDIO UNLOCK -->
 <div id="audioGate">
   <div class="box">
-    <strong>Click to enable audio</strong><br>
+    <strong>Tap to enable audio</strong><br>
     Browsers require one interaction
   </div>
 </div>
 
 <!-- POPUPS -->
 <div id="popups">
-  
+  <!-- (ADDED) you had popup logic but no elements -->
+  <img class="popup" src="popup1.png" alt="">
+  <img class="popup" src="popup2.png" alt="">
+  <img class="popup" src="popup3.png" alt="">
 </div>
 
 <!-- STAGE -->
@@ -308,6 +321,38 @@ let loaded = 0;
 });
 </script>
 
+<!-- ================= TOUCH / POINTER CAPTURE (ADDED) ================= -->
+<script>
+/*
+  On mobile, "pointermove" can be flaky unless the element captures the pointer.
+  This does NOT change your rotation logic—only ensures drag works reliably.
+*/
+(() => {
+  const stage = document.getElementById("stage");
+
+  stage.addEventListener("pointerdown", (e) => {
+    // keep getting pointermove events even if finger drifts a bit
+    try { stage.setPointerCapture(e.pointerId); } catch {}
+    // rotate immediately on touch down so it feels responsive
+    if (typeof rotateToCursor === "function") rotateToCursor(e);
+  }, { passive: false });
+
+  stage.addEventListener("pointerup", (e) => {
+    try { stage.releasePointerCapture(e.pointerId); } catch {}
+  });
+
+  stage.addEventListener("pointercancel", (e) => {
+    try { stage.releasePointerCapture(e.pointerId); } catch {}
+    if (typeof resetArm === "function") resetArm();
+  });
+
+  // If user taps outside stage area (rare on full-screen), still reset safely.
+  window.addEventListener("blur", () => {
+    if (typeof resetArm === "function") resetArm();
+  });
+})();
+</script>
+
 <!-- ================= BACKGROUND WATCHER (ADDED) ================= -->
 <script>
 (() => {
@@ -328,6 +373,3 @@ let loaded = 0;
 
 </body>
 </html>
-
-
-
